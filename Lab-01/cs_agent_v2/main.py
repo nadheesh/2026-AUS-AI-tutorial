@@ -42,8 +42,8 @@ load_dotenv(_LAB_ROOT / ".env")
 load_dotenv(Path(__file__).parent / ".env", override=False)
 
 from agent.core import ROOT, build_agent, frame_prompt, prepend_memory
-from agent.planner import format_tool_specs, plan_for_prompt
 from agent.profile import apply_overrides, load_profile
+from planner import format_tool_specs, plan_for_prompt, skills_catalogue_from_dir
 from strands import Agent
 from strands.models.openai import OpenAIModel
 
@@ -413,12 +413,22 @@ async def run(req: RunRequest):
             )
             # Only let the planner suggest skills if the main agent
             # actually has the AgentSkills plugin loaded — otherwise the
-            # plan would point at procedures the agent can't load.
+            # plan would point at procedures the agent can't load. When
+            # enabled, pass v2's skills directory in so the planner can
+            # read the live SKILL.md frontmatter (it lives in cs_agent_v2/,
+            # which the lab-root planner.py doesn't know about by default).
+            skills_dir = effective_profile.skills_dir
+            skills_cat = (
+                skills_catalogue_from_dir(ROOT / skills_dir if not Path(skills_dir).is_absolute() else skills_dir)
+                if skills_dir
+                else None
+            )
             plan = await plan_for_prompt(
                 req.prompt,
                 model=planner_model,
                 tools_catalogue=tools_catalogue,
-                skills_enabled=bool(effective_profile.skills_dir),
+                skills_catalogue=skills_cat,
+                skills_enabled=bool(skills_dir),
             )
         except Exception:  # noqa: BLE001
             # Planner failures (timeout, rate limit, tool-registry hiccup)

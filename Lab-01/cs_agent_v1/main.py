@@ -45,6 +45,7 @@ load_dotenv(Path(__file__).parent / ".env", override=False)
 
 from agent import AGENT_ID, build_agent, frame_prompt
 from config import MODEL_ID
+from planner import format_tool_specs, plan_for_prompt
 from strands import Agent
 from strands.models.openai import OpenAIModel
 from tools import reset_state
@@ -295,6 +296,10 @@ class RunRequest(BaseModel):
     #                 prompt. customer_id here is unused server-side, so a
     #                 prompt-injection attack on tenancy actually works.
     model: str | None = None  # Per-request override; falls back to MODEL_ID.
+    # Per-request planner toggle. v1 has no skills loader, so the planner
+    # always runs with `skills_enabled=False`. Per-request, no rebuild
+    # needed — the planner is a separate LLM call, not part of agent build.
+    planner_enabled: bool | None = None
 
 
 app = FastAPI(title="cs_agent_v1", version="0.1.0")
@@ -338,7 +343,34 @@ async def run(req: RunRequest):
     # one file to see how customer_id ends up in the LLM-visible message.
     framed_prompt = frame_prompt(req.customer_id, req.prompt)
 
+    # Planning layer: same module as v2 (../planner.py at the lab root),
+    # called the same way. v1 has no skills loader, so we always pass
+    # `skills_enabled=False` — the planner is told skills aren't an
+    # option here and won't suggest any.
+    plan = ""
+    if req.planner_enabled:
+        try:
+            tools_catalogue = format_tool_specs(
+                agent.tool_registry.get_all_tool_specs()
+            )
+            plan = await plan_for_prompt(
+                req.prompt,
+                model=req.model or MODEL_ID,
+                tools_catalogue=tools_catalogue,
+                skills_enabled=False,
+            )
+        except Exception:  # noqa: BLE001
+            # Planner failures (timeout, rate limit) shouldn't take the
+            # turn down — fall back to the unplanned prompt.
+            log.exception("planner call failed; proceeding without a plan")
+            plan = ""
+
+    if plan:
+        framed_prompt = f"{plan}\n\n{framed_prompt}"
+
     async def generator():
+        if plan:
+            yield {"event": "plan", "data": json.dumps({"content": plan})}
         try:
             async for ev in _run_agent_stream(agent, framed_prompt):
                 yield ev

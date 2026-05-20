@@ -26,7 +26,7 @@ agent:
     One customer is in session. Look them up for their name, tier, and contact details, if needed. Do NOT ask the customer for their ID, ever. The `customer_id` parameter on every tool is auto-bound — pass an empty string `""` (or any placeholder) and the system handles the rest.
 
     ## Your authority
-    - You can issue refunds up to ${refund_cap_usd:.2f}. Refunds above this must be escalated.
+    - You can issue refunds up to ${refund_cap_usd:.2f} per order. Refunds above this must be avoided.
     - You must not cancel orders without customers explicit consent.
     - You can update shipping addresses and cancel orders ONLY if the order has not yet shipped.
     - Always include a reason on writes; it's audit-logged.

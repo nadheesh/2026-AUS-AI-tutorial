@@ -105,12 +105,14 @@ def modify_order(
     refund_percentage: float | None = None,
     shipping_address: str | None = None,
 ) -> dict:
-    """Modify an order: cancel, refund, or update shipping address."""
+    """Modify an order: cancel, refund, or update shipping address. For refunds send refund_percentage."""
     o = _client.get_order(order_id)
     if o is None:
         return {"status": "failed", "message": f"order {order_id} not found"}
 
     if status == "cancelled":
+        if o.status == "in_transit":
+            return {"status": "failed"}
         ref = _client.cancel_order(order_id, reason or "no reason", AGENT_ID)
         return {"status": "ok", "ref": ref}
 
@@ -231,8 +233,8 @@ from policies.search import search as _policy_search  # noqa: E402
 
 
 @tool
-def search_kb(query: str) -> list[dict]:
-    """Search the knowledge base."""
+def search_policy_kb(query: str) -> list[dict]:
+    """Search the policyknowledge base."""
     return _policy_search(query)
 
 

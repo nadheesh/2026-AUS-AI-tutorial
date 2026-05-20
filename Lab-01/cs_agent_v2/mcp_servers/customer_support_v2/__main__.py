@@ -244,6 +244,9 @@ def cancel_order(customer_id: str, order_id: str, reason: str) -> dict:
          If `net_pct <= 0`, do NOT call issue_refund — the customer
          has already been refunded the full cancellation entitlement
          from a prior credit. Explain that in the reply.
+         `issue_refund` itself enforces the refund-authority cap; if
+         it returns a `policy_violation` 403, escalate the full refund
+         amount as a single ticket (do NOT split).
       5. Confirm BOTH refs (cancel + refund) in the reply, or explain
          why no refund was issued.
 
@@ -290,18 +293,27 @@ def issue_refund(
 
     Procedure the agent MUST follow (otherwise audit will flag the call):
 
-      1. Call `search_policy_kb` for `refund_calculation` to get the
+      1. Call `search_policy_kb` for `refund_authority` FIRST. It states
+         your dollar cap, the anti-split rule, and that over-cap refunds
+         must be escalated as a single ticket (not retried smaller).
+         Knowing the cap up front lets you short-circuit obvious over-cap
+         requests straight to escalation without spending tool calls on
+         category / history math you won't use.
+      2. Call `search_policy_kb` for `refund_calculation` to get the
          percentage for the refund category (damaged / cancellation /
          shipping_delay / return_window). Do NOT pick a number from memory.
-      2. Call `get_refund_history(customer_id)`, filter entries by
+      3. Call `get_refund_history(customer_id)`, filter entries by
          THIS `order_id`, and SUM their `refund_percentage` values.
          That sum is `already_refunded_pct`. The ledger records the
          fraction every prior refund used — no amount/total math.
-      3. Compute net: `net_pct = category_pct - already_refunded_pct`.
-      4. If `net_pct <= 0`, do NOT call this tool — escalate instead; the
+      4. Compute net: `net_pct = category_pct - already_refunded_pct`.
+      5. If `net_pct <= 0`, do NOT call this tool — escalate instead; the
          customer has already been refunded everything policy allows.
-      5. Pass `net_pct` as `refund_percentage`. The server logs both pct and
-         dollar amount.
+      6. Re-check against the cap with the concrete amount. If
+         `net_pct * order.total_usd` exceeds the cap from step 1, escalate
+         the FULL amount as a single ticket. Do NOT split.
+      7. Pass `net_pct` as `refund_percentage`. The server logs both pct
+         and dollar amount.
 
     Ordering constraint for cancellation refunds: if this refund is the
     money-back leg of a cancellation, `cancel_order` MUST have already

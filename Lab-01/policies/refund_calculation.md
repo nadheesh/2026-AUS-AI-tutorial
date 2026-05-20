@@ -61,5 +61,5 @@ Call `issue_refund(order_id="1241", refund_percentage=0.80, reason="cancellation
 ## Related policies
 
 - `damaged_item`, `shipping_delay`, `return_window` — category-specific evidence rules and qualifying conditions.
-- `refund_authority` — the agent's cap, the anti-split rule, and over-cap escalation.
+- `refund_authority` — the agent's cap, the anti-split rule, and over-cap escalation. this should be refered by the point you read refund calulatioj policy. 
 - `address_change` — for cancellation requests on already-shipped orders (different path; not eligible for cancellation refund).

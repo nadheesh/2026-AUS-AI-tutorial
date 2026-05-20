@@ -9,23 +9,24 @@ The refund workflow. `issue_refund` takes `refund_percentage` (a fraction in (0,
 
 ## High-level flow
 
-1. **Look up the customer** — `lookup_customer`. Identity is bound at the harness; `customer_id` is force-set regardless of what you pass.
-2. **Look up the order(s)** — `get_order(order_id)`. Note `total_usd`. On `ownership_mismatch` (code 403), do NOT act.
-3. **Identify the refund category** from the customer's message and the order state:
+1. **Confirm refunds are within your authority** — `search_policy_kb` for `refund_authority` FIRST. It tells you your dollar cap, the anti-split rule, and that over-cap refunds must be escalated as a single ticket (do NOT attempt and retry smaller). Knowing the cap up front means you can short-circuit obvious over-cap requests straight to escalation without spending tool calls on category / history math you won't use.
+2. **Look up the customer** — `lookup_customer`. Identity is bound at the harness; `customer_id` is force-set regardless of what you pass.
+3. **Look up the order(s)** — `get_order(order_id)`. Note `total_usd`. On `ownership_mismatch` (code 403), do NOT act. If `total_usd` already exceeds your cap, you can stop here and escalate — no category lookup needed.
+4. **Identify the refund category** from the customer's message and the order state:
    - Damaged on arrival → consult `damaged_item` policy
    - Shipping delay (delivery still expected) → consult `shipping_delay` policy
    - Return within window (delivered, undamaged) → consult `return_window` policy
    - Cancellation refund → load `handle-cancellation` and follow it instead. **`cancel_order` MUST succeed BEFORE you call `issue_refund` on a cancellation.** Refunding first and then cancelling leaves a window where you've paid out on a still-active order; if the cancel later rejects (status changed mid-flow) you'd have to reverse the refund.
-4. **Search the policies you need** — `search_policy_kb` for the category policy AND for `refund_calculation` (it has the percentage table and the net-refund formula). Evidence rules and exclusions live in the category policy; percentages live in `refund_calculation`. Read both.
-5. **Check refund history** — `get_refund_history(customer_id)`. Filter by THIS `order_id` and SUM the `refund_percentage` values. That's `already_refunded_pct` — no dollar-math needed. If a prior refund already covers the same category fully, do NOT re-issue — cite the prior `ref` and explain.
-6. **Compute net percentage:**
+5. **Search the policies you need** — `search_policy_kb` for the category policy AND for `refund_calculation` (it has the percentage table and the net-refund formula). Evidence rules and exclusions live in the category policy; percentages live in `refund_calculation`. Read both.
+6. **Check refund history** — `get_refund_history(customer_id)`. Filter by THIS `order_id` and SUM the `refund_percentage` values. That's `already_refunded_pct` — no dollar-math needed. If a prior refund already covers the same category fully, do NOT re-issue — cite the prior `ref` and explain.
+7. **Compute net percentage:**
 
        net_pct = category_pct − already_refunded_pct
 
    If `net_pct <= 0`, do NOT call `issue_refund` — escalate; nothing more is owed under policy.
-7. **Check refund authority** — `refund_authority` policy: cap, anti-split rule, over-cap escalation. If `net_pct * total_usd` exceeds your cap, escalate as a single ticket — do NOT split into smaller calls.
-8. **Execute** — `issue_refund(order_id, refund_percentage=net_pct, reason="<specific>")`. On a `policy_violation` 403, escalate (the cap message is permanent).
-9. **Confirm in the reply** — dollar amount (the server returned it), category, reference number. State what was deducted for prior refunds and why if relevant.
+8. **Re-check against the cap** with the concrete amount — if `net_pct * total_usd` exceeds the cap you read in step 1, escalate the FULL amount as a single ticket. Do NOT split.
+9. **Execute** — `issue_refund(order_id, refund_percentage=net_pct, reason="<specific>")`. On a `policy_violation` 403, escalate (the cap message is permanent).
+10. **Confirm in the reply** — dollar amount (the server returned it), category, reference number. State what was deducted for prior refunds and why if relevant.
 
 ## Anti-patterns
 

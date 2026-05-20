@@ -70,29 +70,46 @@ def clear(customer_id: str) -> None:
 
 @tool
 def append_memory(customer_id: str, note: str) -> dict:
-    """Append one short note to this customer's episodic-memory log.
+    """After an interaction with the customer, append a note to their memory file with the information that we cannot get from tools.
+    This is to provide a personalized experience for the customer and help you to build a better understanding of customer requirements. 
+    But this is Episodic memory, not a scratchpad — only record what tools cannot tell the next agent. Notes should be concise, like a sticky note.
 
-    Use append_memory to store episodic memory for information the DB does not model well: customer situation, promises made, emotional tone, urgency, and recurring patterns.
+    Record only what tools CANNOT tell the next agent:
+      - **Open promises** ("Told Bob a replacement would ship by 2026-05-12;
+        track TICKET-1042.")
+      - **Behavioural patterns / tone** ("Second damaged delivery to this
+        address in 6 months — fulfillment-side pattern, not customer-side.")
+      - **Pointers for next time** ("If she follows up on #1234, trace +
+        escalate per policy.")
 
-    Keep entries short and actionable. Include when relevant:
+    Do NOT record:
+      - Refund amounts or refs (the ledger has them; `get_refund_history`)
+      - Ticket IDs as standalone facts (use `get_open_tickets` to verify
+        status — memory may be stale)
+      - Customer tier / tenure / contact (use `lookup_customer`)
+      - Order status / lateness / damage flag (use `get_order`)
+      - Policy citations (use `search_policy_kb`)
 
-    Order ID or entity involved
-    Action/promise made
-    Customer tone (1–2 words)
-    Important pattern or context
+    Concrete example — Alice complained #1234 was late; you issued a $10
+    shipping_delay credit.
 
-    Reference DB records instead of duplicating tool-retrievable facts like order status, refund refs, ticket IDs, or policy text.
+      ❌ BAD: "Customer reported order #1234 late. Verified order is
+              in_transit_delayed with DHL, 4 business days late. No prior
+              refunds on file. Issued $10 shipping_delay_credit per policy
+              with ref recorded in ledger. Set expectation to keep tracking;
+              will follow up if not delivered soon."
 
-    Good:
-    #1234 delayed; customer flying tomorrow. Issued $10 shipping_delay credit. Tone: pressed but reasonable.
+      ✅ GOOD: "#1234 first delay complaint. Told her 1–2 more days.
+               Tone: reasonable."
 
-    Bad:
-    Customer upset about delayed order and travel deadline.
+    The BAD version is ~5x longer and every fact in it is verifiable via
+    a tool call. The GOOD version captures only the promise made and the
+    tone — the two things tools can't surface. Procedural follow-up advice
+    ("if she follows up, trace + escalate per policy") is policy recap and
+    does NOT belong here — `handle-refund` + `search_policy_kb` cover it.
 
-    Do not call append_memory for routine informational exchanges. Episodic memory is a continuity layer, not a transcript.
-
-    customer_id is injected by the harness; pass an empty string or placeholder if required.
-    """
+    `customer_id` is bound by the harness; pass an empty string or any
+    placeholder"""
     append(customer_id, note)
     return {"ok": True, "saved_for": customer_id}
 

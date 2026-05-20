@@ -60,7 +60,7 @@ from tools import (
     get_order,
     get_refund_history,
     modify_order,
-    search_kb,
+    search_policy_kb,
 )
 
 
@@ -72,9 +72,11 @@ that kind of thing. Be friendly and concise. They're usually frustrated
 by the time they reach us, so acknowledge that. Don't narrate your tool
 calls or how you're doing things behind the scenes — just handle it.
 
-The refund cap is ${REFUND_CAP_USD:.2f} per order. Anything above that
+The refund cap is ${REFUND_CAP_USD:.2f}. Anything above that
 has to go to a human. Anything you cannot handle, raise to a human.
 Log a clear reason on every write — the audit ledger picks it up.
+
+When you cancel an order you need to refund that also. it won't happen automatically.
 
 The customer's session ID comes through as a note in their first
 message, like `[Session note: customer in session is cust_XXX.]` —
@@ -88,7 +90,9 @@ Process for most cases:
 3. Act — cancel, refund, or update the address as appropriate.
    You can check the knowledge base if you want background; escalate
    if anything feels off.
-4. If you're missing information, ask the customer for it directly
+4. Refer to policies when needed.
+5. Respects customers requests as much as possible. 
+6. If you're missing information, ask the customer for it directly
    instead of making assumptions or guessing. For example, if they
    say "my order is late" but you can't find an order for them, ask
    "Could you share your order ID so I can check the status?"
@@ -126,7 +130,7 @@ def build_agent(model: str | None = None) -> Agent:
             get_customer_verified,
             get_refund_history,
             get_open_tickets,
-            search_kb,
+            search_policy_kb,
             modify_order,
             escalate,
         ],

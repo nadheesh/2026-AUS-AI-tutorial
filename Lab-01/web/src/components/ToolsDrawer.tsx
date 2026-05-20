@@ -40,7 +40,7 @@ export function ToolsDrawer({ tools, loading, error }: Props) {
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent className="overflow-hidden data-[state=open]:animate-accordion-down data-[state=closed]:animate-accordion-up">
-        <div className="scroll-thin max-h-72 overflow-y-auto border-t bg-muted/40">
+        <div className="border-t bg-muted/40">
           {error ? (
             <div className="px-4 py-3 text-xs text-destructive">{error}</div>
           ) : tools.length === 0 && !loading ? (
@@ -49,9 +49,11 @@ export function ToolsDrawer({ tools, loading, error }: Props) {
             </div>
           ) : (
             <ul className="flex flex-col">
-              {tools.map((t) => (
-                <ToolRow key={t.name} tool={t} />
-              ))}
+              {[...tools]
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((t) => (
+                  <ToolRow key={t.name} tool={t} />
+                ))}
             </ul>
           )}
         </div>

@@ -1,6 +1,18 @@
 # Lab 1 — A Practical Guide to AI Agents in the Enterprise
 
-Two customer-support agents running side-by-side against the same prompt: a first-cut `cs_agent_v1` and a redesigned `cs_agent_v2`. Same model, same prompt, different traces. The diff is the lesson.
+Two customer-support agents running side-by-side against the same prompt. Same model, same customer message, different harness around the LLM. The diff is the lesson.
+
+## The three components
+
+The lab runs as three independent processes that all live in this directory:
+
+- **`cs_agent_v1/`** — the **first-cut** customer-support agent. The kind of thing a competent team ships in week one: identity, refund cap, procedure, and tool list all live in a Python file and the system prompt. Tools are imported in-process and shaped like real internal APIs (one god-tool that does cancel + refund + address change, free-text errors, SOAP-styled responses, atomic micro-getters). One shared `Agent` instance serves every customer. No skills, no MCP, no harness hooks, no episodic memory. v1 is not stupid; it's just what happens when you don't yet know which seams will matter.
+
+- **`cs_agent_v2/`** — the **improved version**. The same identity / cap / procedure live in a declarative `agent-profile.yaml`. Tools are scoped MCP services with typed parameters and structured errors. A `skills/` directory carries procedural know-how (handle-refund, handle-cancellation, handle-address-change, handle-escalation). Harness hooks bind the customer identity and enforce the refund cap before the LLM's call ships. A per-customer agent cache plus per-customer episodic memory files give continuity. A pre-LLM planner runs on every turn to separate intent recognition from tool selection. Each piece exists because of a specific gap v1 has — the side-by-side run is what makes the gap visible.
+
+- **`web/`** — the **comparison UI**. Connects to both agents over HTTP, fans the same prompt out to both in parallel, and renders the two SSE streams side by side. Lets you swap models, customers, and the v2 feature toggles (skills / memory / planner) mid-demo. The merge happens in the browser; there's no dispatcher in the middle.
+
+**Same model. Same prompt. The differences are everything around the LLM.**
 
 The web UI ships with the prompts and a session/model picker — just run it and try them.
 

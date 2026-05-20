@@ -58,6 +58,10 @@ export default function App() {
   const [v2SkillsEnabled, setV2SkillsEnabled] = useState(false);
   const [v2EpisodicEnabled, setV2EpisodicEnabled] = useState(false);
   const [v2PlannerEnabled, setV2PlannerEnabled] = useState(false);
+  // v1's planner uses the same shared `planner.py` module as v2. v1 has
+  // no skills loader, so the planner always runs with skills_enabled=false.
+  // Independent of v2's toggle — flip per panel.
+  const [v1PlannerEnabled, setV1PlannerEnabled] = useState(false);
   // Holds the toggle the user is mid-flipping while the confirm dialog is
   // up. Cleared on confirm or cancel. Only `skills` / `episodic` need this
   // — planner has no rebuild and skips the dialog entirely.
@@ -252,7 +256,9 @@ export default function App() {
                 episodic_enabled: v2EpisodicEnabled,
                 planner_enabled: v2PlannerEnabled,
               }
-            : {}),
+            : {
+                planner_enabled: v1PlannerEnabled,
+              }),
           signal: controller.signal,
           onEvent: handleEvent(variant, turnId),
         });
@@ -478,6 +484,15 @@ export default function App() {
               toolsLoading={v1ToolsLoading}
               toolsError={v1ToolsError}
               onToggleEnabled={() => toggleEnabled("v1")}
+              plannerEnabled={v1PlannerEnabled}
+              onTogglePlanner={() => {
+                // Planner toggle is per-request — no agent rebuild, no
+                // confirm dialog, no reset. Same shape as v2's planner
+                // toggle, just independent state.
+                if (anyRunning) return;
+                setV1PlannerEnabled((v) => !v);
+              }}
+              featuresDisabled={anyRunning}
             />
             <AgentPanel
               service={AGENTS.v2}

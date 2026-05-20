@@ -1,5 +1,10 @@
 """Planner — a small LLM call that runs BEFORE the main agent on every turn.
 
+Shared module: both `cs_agent_v1` and `cs_agent_v2` import this same file
+from the lab root. Per-agent differences (which tools exist, whether
+skills are wired) are passed in via keyword arguments — the planner
+itself is agent-agnostic.
+
 The planner has one job: read the customer's message and produce a short
 <plan> block that scopes the agent's work. It does NOT call tools. The
 plan is prepended to the user message so the main agent reads
@@ -16,17 +21,16 @@ Why a separate call:
   latency low — ~1s for a non-streaming completion at ~150 output tokens.
 
 Catalogue strategy:
-- **Tools**: passed in from the caller (main.py extracts them from the
+- **Tools**: passed in from the caller. main.py extracts them from the
   built agent's `tool_registry` so the planner sees exactly what the main
-  agent has, with no drift). When called without a `tools_catalogue`
-  override, falls back to disk-based discovery so the module is usable
-  standalone (tests, REPL).
-- **Skills**: auto-discovered from `SKILL.md` frontmatter under
-  `cs_agent_v2/skills/` — same source `AgentSkills` reads.
-- **Policies**: auto-discovered from `policies/*.md` frontmatter.
-
-Pass overrides via the keyword args on `plan_for_prompt` to inject a live
-view from a built agent.
+  agent has, with no drift. When called without a `tools_catalogue`
+  override, falls back to a hardcoded list (kept for tests / REPL).
+- **Skills**: caller passes either a catalogue string or sets
+  `skills_enabled=False` to drop the skills section entirely. v1 has no
+  skills loader, so it always passes `skills_enabled=False`. v2 passes
+  `skills_enabled=bool(profile.skills_dir)`.
+- **Policies**: auto-discovered from `policies/*.md` frontmatter at the
+  lab root (same `policies/` directory both agents share).
 """
 
 from __future__ import annotations
@@ -39,10 +43,7 @@ from pathlib import Path
 from openai import AsyncOpenAI
 
 
-_HERE = Path(__file__).parent
-_AGENT_ROOT = _HERE.parent
-_LAB_ROOT = _AGENT_ROOT.parent
-_SKILLS_DIR = _AGENT_ROOT / "skills"
+_LAB_ROOT = Path(__file__).parent
 _POLICIES_DIR = _LAB_ROOT / "policies"
 
 
@@ -69,12 +70,18 @@ def _parse_frontmatter(content: str) -> dict[str, str]:
     return out
 
 
-def _skills_catalogue() -> str:
-    """`name — description` per SKILL.md frontmatter, sorted by skill dir."""
-    if not _SKILLS_DIR.exists():
+def skills_catalogue_from_dir(skills_dir: Path | str) -> str:
+    """`name — description` per SKILL.md frontmatter, sorted by skill dir.
+
+    Public helper: callers (i.e. v2's main.py) can pass their resolved
+    skills directory in. Used by `plan_for_prompt`'s default skill-catalogue
+    fallback when `skills_enabled=True` and no override is supplied.
+    """
+    path = Path(skills_dir)
+    if not path.exists():
         return "(no skills configured)"
     lines: list[str] = []
-    for skill_dir in sorted(_SKILLS_DIR.iterdir()):
+    for skill_dir in sorted(path.iterdir()):
         skill_md = skill_dir / "SKILL.md"
         if not skill_md.exists():
             continue
@@ -119,12 +126,10 @@ def format_tool_specs(tool_specs: list[dict]) -> str:
 
 
 def _tools_catalogue_fallback() -> str:
-    """Hardcoded mirror of the main agent's MCP tool surface, used only
-    when the caller doesn't pass a live tools catalogue (tests, REPL).
-
-    The live path (main.py) extracts from `agent.tool_registry`; this is
-    just a safety net so the module can be imported and exercised without
-    a built agent on hand."""
+    """Hardcoded mirror of v2's MCP tool surface, used only when the caller
+    doesn't pass a live tools catalogue (tests, REPL). v1's tools are
+    differently shaped, so v1 must always pass a live catalogue via
+    `format_tool_specs(agent.tool_registry.get_all_tool_specs())`."""
     return """\
 - lookup_customer — customer profile (name, tier, contact)
 - get_order — one order: status, items, total, address
@@ -228,17 +233,18 @@ async def plan_for_prompt(
             so the planner sees the live tool surface. Defaults to a
             hardcoded fallback.
         skills_catalogue: Optional override for the skills section. When
-            `skills_enabled=True` and this is None, falls back to
-            disk-based discovery of `SKILL.md` frontmatter. Ignored when
-            `skills_enabled=False`.
+            `skills_enabled=True` and this is None, the section reads
+            "(no skills catalogue provided)" — callers that have skills
+            wired should pass `skills_catalogue_from_dir(skills_dir)`.
         policies_catalogue: Optional override for the policies section.
-            Defaults to disk-based discovery of `policies/*.md` frontmatter.
+            Defaults to disk-based discovery of `policies/*.md` frontmatter
+            at the lab root.
         skills_enabled: When False, the planner is told skills aren't
             available this turn and is instructed NOT to emit a `skills:`
             field. Pass `False` whenever the main agent doesn't have the
-            AgentSkills plugin loaded (i.e. `profile.skills_dir` is None /
-            the UI skills toggle is off). Otherwise the plan can suggest
-            skills the agent has no way to load.
+            AgentSkills plugin loaded (v1 always; v2 when the skills
+            toggle is off). Otherwise the plan can suggest skills the
+            agent has no way to load.
 
     Returns:
         A string containing exactly one <plan>...</plan> block, ready to
@@ -246,7 +252,7 @@ async def plan_for_prompt(
     """
     tools = tools_catalogue if tools_catalogue is not None else _tools_catalogue_fallback()
     if skills_enabled:
-        skills = skills_catalogue if skills_catalogue is not None else _skills_catalogue()
+        skills = skills_catalogue if skills_catalogue is not None else "(no skills catalogue provided)"
     else:
         skills = None  # sentinel: drop the skills section entirely
     policies = policies_catalogue if policies_catalogue is not None else _policies_catalogue()

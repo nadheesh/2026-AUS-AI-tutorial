@@ -68,41 +68,21 @@ def make_mcp_client(config: MCPServerConfig) -> MCPClient:
 
 
 def _memory_protocol() -> str:
-    """Short protocol describing HOW to use episodic memory. Stays in the
-    system prompt; the memory BODY itself is injected into the user message
-    via `prepend_memory()` so it doesn't get drowned by instruction text.
-
-    The "write" half is framed as a judgment call (not a routine), with an
-    explicit "reference the DB; don't duplicate" rule, plus a calibrating
-    example using a real observed failure case (note missing order ID +
-    action taken on a gpt-5.4-mini run).
-    """
-    return """\
-## Episodic memory
-
-This customer's per-customer log of what the DB CANNOT store: their situation, your verbal promises, their tone, and patterns you saw across their orders. Critical data — when they return, this is what lets the next agent pick up the thread instead of starting cold.
-
-Prior notes for the current customer arrive at the top of their first user message of a new session, wrapped in `<episodic_memory>…</episodic_memory>` tags. Use them as POINTERS; re-verify any numbers / IDs / statuses with the matching read tool before acting (the ledger is truth; memory may be stale).
-
-### Goes in
-- Situation, not status ("flight tomorrow", not "in_transit_delayed").
-- Verbal promises ("told them 1–2 more days").
-- Tone, 1–2 words ("pressed but reasonable").
-- Patterns across orders ("third damaged delivery to this address").
-
-### Stays out — reference the DB instead
-Refund refs, ticket IDs, order status, tier, policy text. Anything a tool returns. Cite by ID ("see #1234 via get_order"); do NOT copy. Duplication rots.
-
-### When to write
-Ask: **"Would the next agent miss something important if I write nothing right now?"**
-
-- Yes → call `append_memory(customer_id="", note=...)` BEFORE your reply. One line, packing: order ID, action / promise, tone, pattern (if any).
-- No → skip. Info-only turns need no note.
-
-### Example
-✅ "#1234 late, flight tomorrow; issued $10 shipping_delay credit. Tone: pressed but reasonable."
-❌ "Urgent travel deadline on late-order; flying tomorrow. Tone: pressed but reasonable."
-(Missing order ID + action — useless to the next agent.)"""
+    return """You have episodic memory: short notes about prior sessions with each "
+        "customer. When present for the current customer, the notes arrive at "
+        "the top of their first user message of a new session, wrapped in "
+        "`<episodic_memory>…</episodic_memory>` tags.\n\n"
+        "How to use it:\n"
+        "- **Pointers, not data.** Use notes to know what to look up and how to "
+        "frame the reply. Numbers / IDs (refund refs, ticket IDs, amounts) MUST "
+        "be re-verified via the matching read tool before you act on them — the "
+        "audit ledger is the source of truth, memory may be stale.\n"
+        "- **Tone matters.** A note like \"second damaged delivery; tone pointed\" "
+        "should shape your phrasing and your escalation threshold.\n"
+        "- **Close the loop.** Before the turn ends, call `append_memory(customer_id="
+        "\"\", note=<short>)` with the things tools CAN'T tell the next session: "
+        "open promises, patterns, tone. Strip anything an API would return. "
+        "Keep it small."""
 
 
 def prepend_memory(
